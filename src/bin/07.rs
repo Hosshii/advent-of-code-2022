@@ -39,7 +39,7 @@ impl FS {
             "/" => self.cur = self.root.clone(),
             ".." => {
                 let parent = self.cur.borrow().parent.clone().expect("no parent");
-                self.cur = parent.upgrade().expect("parent is dropped").into();
+                self.cur = parent.into();
             }
             s => {
                 let cur = self.cur.borrow();
@@ -62,11 +62,7 @@ impl FS {
         let mut cur = self.cur.borrow_mut();
         cur.children.insert(
             name.to_string(),
-            NodePtr::from_node(Node::new(
-                entry,
-                HashMap::new(),
-                Some(self.cur.clone().into_weak()),
-            )),
+            NodePtr::from_node(Node::new(entry, HashMap::new(), Some(self.cur.clone()))),
         );
     }
 }
@@ -172,7 +168,7 @@ impl<T: Debug> NodeIter<T> {
     fn move_to_parent(&mut self) {
         let parent = self.cur.borrow().parent.clone();
         if let Some(parent) = parent {
-            self.cur = parent.upgrade().expect("parent is dropped").into();
+            self.cur = parent.into();
         } else {
             self.has_next = false;
         }
@@ -220,11 +216,11 @@ struct Node<T> {
     val: T,
     seen: bool,
     children: HashMap<String, NodePtr<T>>,
-    parent: Option<NodeWeakPtr<T>>,
+    parent: Option<NodePtr<T>>,
 }
 
 impl<T> Node<T> {
-    fn new(val: T, children: HashMap<String, NodePtr<T>>, parent: Option<NodeWeakPtr<T>>) -> Self {
+    fn new(val: T, children: HashMap<String, NodePtr<T>>, parent: Option<NodePtr<T>>) -> Self {
         Self {
             val,
             seen: false,
@@ -361,7 +357,7 @@ fn parse_ls_result(s: &str) -> IResult<&str, LsResult> {
     ))(s)
 }
 
-fn process(s: &str) -> IResult<&str, u32> {
+fn parse_input(s: &str) -> IResult<&str, FS> {
     let mut fs = FS::new();
     let mut lines = s.lines().peekable();
     loop {
@@ -390,7 +386,11 @@ fn process(s: &str) -> IResult<&str, u32> {
             }
         }
     }
-    // dbg!(&fs);
+    Ok(("", fs))
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
+    let fs = parse_input(input).unwrap().1;
 
     let sum = fs
         .into_iter()
@@ -403,16 +403,21 @@ fn process(s: &str) -> IResult<&str, u32> {
             }
         })
         .sum();
-    Ok(("", sum))
-}
-
-pub fn part_one(input: &str) -> Option<u32> {
-    let a = process(input).expect("err");
-    Some(a.1)
+    Some(sum)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let fs = parse_input(input).unwrap().1;
+    let total = 70000000;
+    let need_space = 30000000;
+    let used = fs.root.size();
+    let free = total - used;
+
+    let need = need_space - free;
+    fs.into_iter()
+        .filter(|v| v.size() >= need && v.is_dir())
+        .map(|v| v.size())
+        .min()
 }
 
 fn main() {
@@ -434,6 +439,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 7);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(24933642));
     }
 }
